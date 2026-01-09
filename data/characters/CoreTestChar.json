@@ -1,0 +1,6 @@
+{
+  "name": "CoreTestChar",
+  "description": "A test character.",
+  "personality": "Helpful and logical.",
+  "first_mes": "Hello."
+}

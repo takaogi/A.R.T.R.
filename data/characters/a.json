@@ -1,0 +1,35 @@
+{
+  "name": "a",
+  "description": "",
+  "scenario": "",
+  "first_message": "",
+  "system_prompt": "",
+  "reflex_examples": "",
+  "white_room_path": "data/white_room",
+  "default_length": "1~2 sentences",
+  "example_dialogue": "",
+  "system_params": {
+    "pacemaker": {
+      "base_interval_sec": 60,
+      "probability": 0.5
+    },
+    "vad_baseline": {
+      "valence": 0.0013037809647979959,
+      "arousal": 0.0,
+      "dominance": 0.0
+    },
+    "vad_volatility": {
+      "valence": 1.2569752281616688,
+      "arousal": 1.0,
+      "dominance": 1.0
+    }
+  },
+  "reaction_styles": {
+    "Attack": "Counter_Aggression",
+    "Confession": "Reciprocate_Love",
+    "Praise_Ability": "Proud_Boast",
+    "Rejection": "Cold_Acceptance",
+    "Skinship": "Enjoy_Affection",
+    "Teasing": "Amused_Laugh"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "pacemaker": {
+    "base_interval_sec": 60,
+    "probability": 0.85
+  },
+  "vad_baseline": {
+    "valence": 0.7,
+    "arousal": 0.95,
+    "dominance": 0.8
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "Attack": "Counter_Aggression",
+  "Comfort_Give": "Gentle_Motherly",
+  "Comfort_Seek": "Openly_Dependent",
+  "Confession": "Reciprocate_Love",
+  "Praise_Ability": "Proud_Boast",
+  "Praise_Appearance": "Happy_Acceptance",
+  "Rejection": "Tearful_Despair",
+  "Serious": "Listen_Intently",
+  "Skinship": "Enjoy_Affection",
+  "Teasing": "Amused_Laugh"
+}
