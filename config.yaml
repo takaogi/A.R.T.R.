@@ -1,0 +1,105 @@
+system:
+  debug_mode: true
+  log_level: "DEBUG"
+
+memory:
+  conversation_limit: 30
+  thought_limit: 10
+  embedding_provider: "local"
+  local_embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+search:
+  google_cse_id: "c4bdecb34c7794e83"
+  use_llm_search: true
+
+local_llm:
+  model_dir: "data/models"
+  default_model: "MN-12B-Mag-Mell-Q4_K_M.gguf"
+  context_size: 16384
+  gpu_layers: -1
+  presets:
+    - name: "12GB GPU (Mag-Mell 12B)"
+      repo_id: "inflatebot/MN-12B-Mag-Mell-R1-GGUF"
+      filename: "MN-12B-Mag-Mell-Q4_K_M.gguf"
+      description: "Optimal for 12GB VRAM. High creative capability."
+    - name: "16GB GPU (Mistral Small 24B)"
+      repo_id: "mradermacher/Mistral-Small-24B-Instruct-2501-abliterated-GGUF"
+      filename: "Mistral-Small-24B-Instruct-2501-abliterated.Q3_K_M.gguf"
+      description: "Optimal for 16GB VRAM. Larger parameter count."
+
+pacemaker:
+  default_auto_max_consecutive: 50
+
+# --- Prompt Strategy Mapping ---
+llm_strategies:
+  cognitive: "deepseek-v3.2(openrouter)"
+  character_convert: "gpt-5.2(openai)"
+  character_generate: "gpt-5.2(openai)"
+  memory_consolidate: "gpt-5-mini(openrouter)"
+  web_search_summary: "gpt-5-mini(openai)"
+  echo(debug): "gpt-5-mini(openai)"
+
+llm_profiles:
+  # --- 翻訳・生成・キャラ設定 (High Capability) ---
+  gpt-5.2(openai):
+    provider: "openai"
+    model_name: "gpt-5.2"
+    parameters:
+      reasoning_effort: "high"
+    capabilities:
+      supports_structured_outputs: true
+
+  gpt-5.2(openrouter):
+    provider: "openrouter"
+    model_name: "openai/gpt-5.2"
+    parameters:
+      reasoning_effort: "high"
+    capabilities:
+      supports_structured_outputs: true
+
+  deepseek-v3.2(openrouter):
+    provider: "openrouter"
+    model_name: "deepseek/deepseek-v3.2"
+    parameters:
+      temperature: 0.6
+    capabilities:
+      supports_structured_outputs: true
+      force_schema_prompt_injection: false
+
+  # --- Roleplay ---
+  gpt-5-mini(openrouter):
+    provider: "openrouter"
+    model_name: "openai/gpt-5-mini"
+    parameters:
+      reasoning_effort: "low"
+    capabilities:
+      supports_structured_outputs: true
+
+  euryale-70b(openrouter):
+    provider: "openrouter"
+    model_name: "sao10k/l3.1-euryale-70b"
+    parameters:
+      temperature: 0.6
+    capabilities:
+      supports_structured_outputs: true
+      force_schema_prompt_injection: false
+
+  # --- 要約 (Summary) ---
+  claude-3.5-haiku(openrouter):
+    provider: "openrouter"
+    model_name: "anthropic/claude-3.5-haiku"
+    parameters:
+      temperature: 0.6
+    capabilities:
+      supports_structured_outputs: false
+      force_schema_prompt_injection: false
+
+
+  # --- ネット検索 (Web search) ---
+  gpt-5-mini(openai):
+    provider: "openai"
+    model_name: "gpt-5-mini"
+    parameters:
+      reasoning_effort: "low"
+    capabilities:
+      supports_structured_outputs: true
