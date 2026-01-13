@@ -102,6 +102,9 @@ class ChatView(ttk.Frame):
 
     def _poll_history(self, loop):
         # Poll engine history
+        if not self.winfo_exists():
+            return
+            
         if self.controller._is_initialized and self.controller.memory_manager:
             history = self.controller.memory_manager.get_context_history() # returns list of dict
             if len(history) > self.last_history_len:
