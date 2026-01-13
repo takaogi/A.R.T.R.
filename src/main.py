@@ -2,10 +2,6 @@ import sys
 import os
 import asyncio
 import tkinter as tk
-
-# Add src to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from src.ui.tkinter.app import App
 
 async def main():
