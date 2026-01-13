@@ -22,11 +22,12 @@ class TachieDisplay(ttk.Frame):
         # Bind resize
         self.bind("<Configure>", self._on_resize)
 
-    def set_character(self, profile):
+    def set_character(self, profile, directory_name: str = None):
         """
         Sets the character profile to display.
         """
-        self.char_name = profile.name
+        # Use explicit directory name if available, else fallback to profile name
+        self.char_name = directory_name if directory_name else profile.name
         self.asset_map = profile.asset_map
         self.update_expression("default")
 

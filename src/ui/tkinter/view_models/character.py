@@ -67,7 +67,10 @@ class CharacterViewModel:
              with open(profile_path, "r", encoding="utf-8") as f:
                  json_str = f.read()
              profile = CharacterProfile.model_validate_json(json_str)
-             await self.controller.load_character(profile_obj=profile)
+             await self.controller.load_character(
+                 profile_obj=profile, 
+                 directory_name=self.selected_character
+             )
              return True
         return False
 

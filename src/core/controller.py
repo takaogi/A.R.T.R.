@@ -97,10 +97,16 @@ class CoreController:
         # Meta
         self.tool_registry.register("update_core_memory", UpdateCoreMemoryTool())
 
-    async def load_character(self, output_path: str = None, profile_obj: CharacterProfile = None):
+    async def load_character(self, output_path: str = None, profile_obj: CharacterProfile = None, directory_name: str = None):
         """
         Loads a character and initializes the Cognitive Engine.
         Can allow loading from a compiled JSON/CharX path OR a direct Profile object.
+        
+        Args:
+            output_path: Path to character file (not fully implemented)
+            profile_obj: CharacterProfile object to load
+            directory_name: Explicit directory name (ID) for the character. 
+                           If None, defaults to profile_obj.name.
         """
         if not self._is_initialized:
             raise RuntimeError("System not initialized. Call initialize_system() first.")
@@ -115,10 +121,14 @@ class CoreController:
         else:
             raise ValueError("Must provide either output_path or profile_obj.")
 
-        logger.info(f"CoreController: Loading character '{self.current_profile.name}'...")
+        # Determine explicit directory name or fallback to display name
+        # (Legacy behavior used display name which caused path mismatches)
+        target_dir_name = directory_name if directory_name else self.current_profile.name
+
+        logger.info(f"CoreController: Loading character '{self.current_profile.name}' (Dir: {target_dir_name})...")
 
         # 4. State Manager
-        self.character_manager = CharacterStateManager(self.current_profile.name)
+        self.character_manager = CharacterStateManager(target_dir_name)
         
         # 5. Engine
         self.engine = CognitiveEngine(
@@ -135,36 +145,23 @@ class CoreController:
     async def handle_user_input(self, text: str) -> Optional[CognitiveResponse]:
         """
         Main Loop Entry Point.
-        Feeds user input to memory and executes a cognitive cycle.
+        Feeds user input to memory and executes a cognitive cycle via Engine's public API.
+        This ensures 'Thinking' state is tracked and Idle/Continuous loops are respected.
         """
         if not self.engine:
             raise RuntimeError("Engine not loaded. Load a character first.")
             
         logger.info(f"CoreController: User Input: {text}")
         
-        # 1. Input to Memory
-        self.memory_manager.add_interaction("user", text)
+        # Use Engine's public API for correct lifecycle management (Task tracking, Interrupts, Idle Loop)
+        await self.engine.start_user_turn(text)
         
-        # 2. Execute Cycle
-        try:
-            # We use the internal _execute_cognitive_cycle because we want the raw response object
-            # for the UI to parse (thought, expression, actions).
-            # standard 'start_user_turn' might be fire-and-forget or cleaner API in future.
-            
-            # Note: In the verified debug script, we used _execute_cognitive_cycle directly.
-            result = await self.engine._execute_cognitive_cycle()
-            
-            if result.get("status") == "error":
-                logger.error(f"CoreController: Engine Error: {result.get('error')}")
-                return None
-                
-            response: CognitiveResponse = result.get("response")
-            return response
-            
-        except Exception as e:
-            logger.error(f"CoreController: Execution Failed: {e}")
-            traceback.print_exc()
-            return None
+        return None
+        
+        # NOTE: Previous logic was bypassing the Engine loop and doing single-shot execution.
+        # This caused "Thinking" indicator failure and ignored 'idle' (continuous thought).
+        # We now rely on Engine to manage the loop.
+
 
     def get_history(self) -> List[Dict[str, Any]]:
         """Returns visual history."""

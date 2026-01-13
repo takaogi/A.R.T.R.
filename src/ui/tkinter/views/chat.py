@@ -67,7 +67,12 @@ class ChatView(ttk.Frame):
         app = self.master.master
         
         if self.controller.current_profile:
-            self.tachie_panel.set_character(self.controller.current_profile)
+            # Use the actual directory name from manager if available to ensure assets are found
+            dir_name = None
+            if self.controller.character_manager:
+                dir_name = self.controller.character_manager.character_name
+                
+            self.tachie_panel.set_character(self.controller.current_profile, directory_name=dir_name)
             
             # Restore History
             try:
