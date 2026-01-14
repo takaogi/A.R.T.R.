@@ -100,8 +100,6 @@ class CharacterSelectView(ttk.Frame):
             char_dir = base_dir / name
             assets_dir = char_dir / "assets"
             
-            print(f"[DEBUG] Select: {name}, Assets: {assets_dir}")
-            
             img_path = None
             if assets_dir.exists():
                 # Priority: main > default > any
@@ -109,7 +107,6 @@ class CharacterSelectView(ttk.Frame):
                      p = assets_dir / f"main{ext}"
                      if p.exists():
                          img_path = p
-                         print(f"[DEBUG] Found main: {p}")
                          break
                 
                 if not img_path:
@@ -117,7 +114,6 @@ class CharacterSelectView(ttk.Frame):
                          p = assets_dir / f"default{ext}"
                          if p.exists():
                              img_path = p
-                             print(f"[DEBUG] Found default: {p}")
                              break
                 
                 # Fallback: Find ANY image
@@ -125,26 +121,20 @@ class CharacterSelectView(ttk.Frame):
                     for f in assets_dir.iterdir():
                         if f.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]:
                             img_path = f
-                            print(f"[DEBUG] Found fallback: {f}")
                             break
-            else:
-                 print(f"[DEBUG] Assets dir not found.")
             
             if img_path:
                 img = AssetLoader.load_image(img_path, size=(250, 350)) # Fit details
                 if img:
                     self.img_label.config(image=img)
                     self.current_image = img # Keep ref
-                    print(f"[DEBUG] Image loaded and configured.")
-                    self.lbl_info.config(text=f"ID: {name}\nImg: {img_path.name}")
+                    self.lbl_info.config(text=f"ID: {name}")
                 else:
                     self.img_label.config(image="")
-                    print(f"[DEBUG] Image load failed (None).")
-                    self.lbl_info.config(text=f"ID: {name}\nImg: Load Failed")
+                    self.lbl_info.config(text=f"ID: {name}\n(Image load failed)")
             else:
                  self.img_label.config(image="")
-                 print(f"[DEBUG] No image path resolved.")
-                 self.lbl_info.config(text=f"ID: {name}\nImg: Not Found")
+                 self.lbl_info.config(text=f"ID: {name}\nNo Image")
                  
         except Exception as e:
             logging.error(f"Selection Error: {e}")
