@@ -12,6 +12,10 @@ class LLMRequest(BaseModel):
     json_schema: Optional[Any] = None  # Pydantic model class or dict (Native Structured Output)
     force_json_mode: bool = False      # Enforce {"type": "json_object"} (Generic JSON Mode)
     tools: Optional[List[Dict[str, Any]]] = None
+    
+    # Connection Overrides
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
 
 class LLMResponse(BaseModel):
     """Raw response from provider."""

@@ -201,10 +201,25 @@ Speech Patterns:
         
         parts = []
         parts.append(self._get_base_instructions())
+        parts.append(self._get_language())
         parts.append(self._get_identity(profile, data))
         
+        # Context Block (Time, Rapport, Memory)
+        # Note: 'context_block' was removed from InjectionManager, so we MUST include it here.
+        if "context_block" not in injected_keys:
+            time_str = data.get("time", "Unknown Time")
+            rapport = data.get("rapport")
+            associations = data.get("associations", [])
+            parts.append(self._get_context_block(time_str, rapport, associations))
+
         if "assets" not in injected_keys:
             parts.append(self._get_assets(profile))
+
+        if "tools" not in injected_keys:
+            # Optional: Add text description of tools for Cognitive Process planning
+            # parts.append(self._get_tools()) 
+            # (Keeping commented out unless requested, as Native Tools handled by LLM Schema)
+            pass
             
         return "\n\n".join(parts)
 
@@ -341,6 +356,7 @@ These memories were spontaneously recalled by association.
         return f"""
 # VISUAL EXPRESSIONS
 You can use these keys in `show_expression`.
+- **Default**: `main`
 {list_str}
 """
 

@@ -20,14 +20,32 @@ class OpenAIProvider(BaseLLMProvider):
             logger.warning(f"Failed to initialize AsyncOpenAI Client: {e}")
 
     async def execute(self, request: LLMRequest) -> Result[LLMResponse]:
-        if not self.client:
+        # Determine Client (Default or Temp for Custom URL)
+        active_client = self.client
+        is_custom_connection = False
+
+        if request.base_url or request.api_key:
+            try:
+                # Create transient client for this request
+                active_client = openai.AsyncOpenAI(
+                    base_url=request.base_url,
+                    api_key=request.api_key or os.getenv("OPENAI_API_KEY") or "dummy" 
+                )
+                is_custom_connection = True
+            except Exception as e:
+                return Result.fail(f"Failed to create custom OpenAI client: {e}")
+        
+        if not active_client:
             return Result.fail("OpenAI Client not initialized.")
 
         try:
-            logger.debug(f"OpenAI Request: Model={request.model}")
+            logger.debug(f"OpenAI Request: Model={request.model} (CustomURL={is_custom_connection})")
             
             # Use Responses API?
-            use_responses_api = True if request.json_schema or (request.tools and len(request.tools) > 0) else False
+            # Disable if custom connection (Ollama/Generic likely don't support it)
+            use_responses_api = True if (request.json_schema or (request.tools and len(request.tools) > 0)) else False
+            if is_custom_connection:
+                use_responses_api = False
 
             if use_responses_api:
                 logger.debug("Using OpenAI Responses API (Async)")
@@ -90,7 +108,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if fmt:
                         api_args["text"] = {"format": fmt}
                     
-                response = await self.client.responses.create(**api_args)
+                response = await active_client.responses.create(**api_args)
                 
                 content = response.output_text
                 
@@ -117,7 +135,7 @@ class OpenAIProvider(BaseLLMProvider):
                 if request.force_json_mode:
                         kwargs["response_format"] = {"type": "json_object"}
     
-                completion = await self.client.chat.completions.create(**kwargs)
+                completion = await active_client.chat.completions.create(**kwargs)
                 content = completion.choices[0].message.content
     
                 return Result.ok(LLMResponse(

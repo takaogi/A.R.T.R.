@@ -31,16 +31,13 @@ class CognitiveEngine:
         self.config = config_manager
         
         # Components
-        self.memory = memory_manager
+        self.memory_manager = memory_manager
         self.character = character_manager
-        self.llm = llm_client
-        self.config = config_manager
+        self.state_manager = character_manager
+        self.llm_client = llm_client
         
         # Echo Ingestor
-        self.ingestor = MemoryIngestor(self.memory, self.llm)
-        
-        # Components
-        self.memory_manager = memory_manager
+        self.ingestor = MemoryIngestor(self.memory_manager, self.llm_client)
         
         # State Manager (Manages dynamic state like Rapport)
         self.state_manager = character_manager
@@ -90,7 +87,7 @@ class CognitiveEngine:
         3. Starts new cognitive cycle.
         """
         # 1. Update Association Buffer (Semantic)
-        self.memory.update_associations(user_input, mode='input')
+        self.memory_manager.update_associations(user_input, mode='input')
         self.last_user_input_time = time.time()
 
         # 2. Cancel current task
@@ -107,7 +104,7 @@ class CognitiveEngine:
             self._wakeup_task.cancel()
             
         # 3. Add to Memory
-        self.memory.add_interaction("user", user_input)
+        self.memory_manager.add_interaction("user", user_input)
         
         # 4. Start new loop
         self._current_task = asyncio.create_task(self._run_cognitive_loop(trigger="user_input"))
@@ -378,9 +375,13 @@ class CognitiveEngine:
             history.extend(ephemeral_messages)
 
         # In a real impl, retrieve time and rapport from modules
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        
         prompt_data = {
             "profile": self.profile,
             "state": self.state_manager.get_state(),
+            "time": current_time,
             "conversation_history": history,
             "associations": self.memory_manager.get_association_context() # Inject Associations
         }

@@ -37,17 +37,21 @@ class CharacterSelectView(ttk.Frame):
         # Detail Panel
         self.detail_frame = ttk.Labelframe(self.main_frame, text="Details", width=300)
         self.detail_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
-        self.detail_frame.pack_propagate(False) # Fixed width
+        # allowed to propagate size from content (image)
+        
+        # Image Preview
+        self.img_label = ttk.Label(self.detail_frame)
+        self.img_label.pack(pady=10)
         
         self.lbl_name = ttk.Label(self.detail_frame, text="", font=("Segoe UI", 14, "bold"))
-        self.lbl_name.pack(pady=10)
+        self.lbl_name.pack(pady=5)
         
-        self.lbl_info = ttk.Label(self.detail_frame, text="Select a character to view details.\n(TODO: Show description)", wraplength=280)
+        self.lbl_info = ttk.Label(self.detail_frame, text="Select a character to view details.", wraplength=280)
         self.lbl_info.pack(pady=10, padx=10)
         
-        # The launch button is now part of the global button_frame, so remove it from detail_frame
-        # self.btn_launch = ttk.Button(self.detail_frame, text="Launch Chat", command=self._on_launch, state="disabled")
-        # self.btn_launch.pack(side=tk.BOTTOM, pady=20, fill=tk.X, padx=20)
+        # Reference to prevent GC
+        self.current_image = None
+        
         
         # Global Action Buttons Frame
         button_frame = ttk.Frame(self)
@@ -62,6 +66,63 @@ class CharacterSelectView(ttk.Frame):
 
         ttk.Button(button_frame, text="戻る", command=self._on_back).pack(side=tk.RIGHT, padx=5)
                  
+        # Launch Button (Accent Style if supported by theme, otherwise standard)
+        self.btn_launch = ttk.Button(button_frame, text="起動", command=self._on_launch, state=tk.DISABLED, style="Accent.TButton")
+        self.btn_launch.pack(side=tk.RIGHT, padx=5)
+        
+        # Initial Load
+        self._refresh_list()
+
+    def _on_select(self, event):
+        selection = self.char_listbox.curselection()
+        if selection:
+            name = self.char_listbox.get(selection[0])
+            self.view_model.select_character(name)
+            
+            # Update UI
+            self.lbl_name.config(text=name)
+            self.lbl_info.config(text=f"Character ID: {name}") 
+            self.btn_launch.config(state="normal")
+            
+            # Load Image (main.*)
+            from src.foundation.paths.manager import PathManager
+            from src.ui.tkinter.utils.asset_loader import AssetLoader
+            
+            base_dir = PathManager.get_instance().get_characters_dir()
+            char_dir = base_dir / name
+            assets_dir = char_dir / "assets"
+            
+            img_path = None
+            if assets_dir.exists():
+                # Priority: main > default > any
+                for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                     p = assets_dir / f"main{ext}"
+                     if p.exists():
+                         img_path = p
+                         break
+                
+                if not img_path:
+                    for ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                         p = assets_dir / f"default{ext}"
+                         if p.exists():
+                             img_path = p
+                             break
+            
+            if img_path:
+                img = AssetLoader.load_image(img_path, size=(250, 350)) # Fit details
+                if img:
+                    self.img_label.config(image=img)
+                    self.current_image = img # Keep ref
+                else:
+                    self.img_label.config(image="")
+            else:
+                 self.img_label.config(image="")
+
+        else:
+            self.btn_launch.config(state="disabled")
+            self.img_label.config(image="")
+            self.lbl_name.config(text="")
+            self.lbl_info.config(text="Select a character...")
         # Launch Button (Accent Style if supported by theme, otherwise standard)
         self.btn_launch = ttk.Button(button_frame, text="起動", command=self._on_launch, state=tk.DISABLED, style="Accent.TButton")
         self.btn_launch.pack(side=tk.RIGHT, padx=5)

@@ -99,6 +99,11 @@ class LLMClient:
                 if profile.provider in ["openai", "openrouter"]:
                      req_force_json = True
 
+        # Resolve connection details
+        api_key = None
+        if profile.api_key_env:
+            api_key = os.getenv(profile.api_key_env)
+            
         req = LLMRequest(
             messages=messages,
             model=profile.model_name,
@@ -106,7 +111,9 @@ class LLMClient:
             reasoning_effort=profile.parameters.reasoning_effort,
             json_schema=req_json_schema,
             force_json_mode=req_force_json,
-            tools=data.get("tools")
+            tools=data.get("tools"),
+            base_url=profile.base_url,
+            api_key=api_key
         )
 
         # Debug: Dump Prompt

@@ -3,15 +3,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, simpledialog, filedialog
 from src.ui.tkinter.view_models.character import CharacterViewModel
 from src.ui.tkinter.utils.asset_loader import AssetLoader
-from src.ui.tkinter.utils.asset_loader import AssetLoader
 import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict, Any
-
 from src.foundation.logging import logger
-from src.ui.tkinter.view_models.character import CharacterViewModel
-from src.ui.tkinter.utils.asset_loader import AssetLoader
 
 if TYPE_CHECKING:
     from src.ui.tkinter.core.view_manager import ViewManager
@@ -32,7 +28,8 @@ class CharacterCreatorView(ttk.Frame):
         
         ttk.Button(button_frame, text="キャラデータ読み込み", command=self._on_import_charx).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="エクスポート (.artrcc)", command=self._on_export_artrcc).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="保存して終了", command=self._on_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="保存", command=lambda: self._on_save(exit_after=False)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="保存して終了", command=lambda: self._on_save(exit_after=True)).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="戻る", command=self._on_back).pack(side=tk.RIGHT)
         
         # --- AI Generation Section (Top) ---
@@ -105,6 +102,10 @@ class CharacterCreatorView(ttk.Frame):
         # Left Panel (List + Buttons)
         left_panel = ttk.Frame(paned, width=200)
         paned.add(left_panel, weight=1)
+        
+        # Guidance
+        lbl_guide = ttk.Label(left_panel, text="【重要】命名規則:\n・デフォルト: 'main'\n・その他: 感情を表す英単語\n  (例: happy, angry)", font=("Segoe UI", 9), foreground="gray")
+        lbl_guide.pack(fill=tk.X, padx=5, pady=5)
         
         self.asset_list = tk.Listbox(left_panel, font=("Segoe UI", 10))
         self.asset_list.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
@@ -195,17 +196,11 @@ class CharacterCreatorView(ttk.Frame):
         async def task():
             try:
                 # 1. Gather Current Context (Scrape UI)
-                # Instead of relying on self.view_model.draft_profile (which might be stale if manual edits happened),
-                # we construct a dict from the UI fields directly.
-                
                 context = {}
                 
                 # Helper: Only add if not empty
                 def add_if_val(k):
                     val = self._get_field(k)
-                    # Handle raw text from list fields? 
-                    # For now just pass raw strings, let Builder handle or assume non-empty?
-                    # Actually CharacterCreatorService expects 'dict' that might look like Profile but loose.
                     if val:
                         # Convert list-like strings to lists for context?
                         if k in ["aliases", "speech_examples", "speech_patterns"]:
@@ -228,9 +223,6 @@ class CharacterCreatorView(ttk.Frame):
                     add_if_val(key)
 
                 # Pass context as 'existing_data' to Service
-                # Service will decide if 'generate' (fill) or 'refine' based on overlap.
-                # Here we always pass scraped context if any.
-                
                 success = await self.view_model.generate_draft(text, current_data=context)
                 if success:
                     self._populate_ui()
@@ -258,7 +250,6 @@ class CharacterCreatorView(ttk.Frame):
 
         # 1. Ask for Save Path
         initial_file = f"{name}.artrcc"
-        # Sanitize filename
         initial_file = "".join([c for c in initial_file if c.isalnum() or c in (' ', '-', '_', '.')]).strip()
         
         path = filedialog.asksaveasfilename(
@@ -269,22 +260,14 @@ class CharacterCreatorView(ttk.Frame):
         )
         if not path: return
 
-        # 2. Ensure Saved First? Or Export from Draft?
-        # Ideally we export from Saved state on disk to ensure assets are consistent.
-        # But user might want to export without saving to DB?
-        # Current ARTRCCSaver expects Profile + Assets on Disk (for absolute paths in asset_map).
-        # So we MUST have the character saved in `characters_data` first for assets to exist cleanly.
-        
         if not self.view_model.current_file_id:
              if messagebox.askyesno("Save Required", "Character must be saved internally before exporting.\nSave now?"):
-                 self._on_save()
-                 # If save failed, current_file_id might still be None
+                 self._on_save(exit_after=False)
                  if not self.view_model.current_file_id:
                      return
              else:
                  return
 
-        # 3. Export
         file_id = self.view_model.current_file_id
         
         try:
@@ -303,7 +286,6 @@ class CharacterCreatorView(ttk.Frame):
         )
         if not path: return
         
-        # Ask for File Name (ID) for target directory
         file_id = simpledialog.askstring("Import Character", "Enter Target File Name (ID):\nThis will be the folder name (e.g. my_char_v1).", parent=self)
         if not file_id:
             return
@@ -316,7 +298,6 @@ class CharacterCreatorView(ttk.Frame):
 
         async def task():
             try:
-                # Use import_character with file_id
                 res = await self.view_model.import_character(path, file_id)
                 if res:
                     self._populate_ui()
@@ -338,7 +319,6 @@ class CharacterCreatorView(ttk.Frame):
         p = self.view_model.draft_profile
         if not p: return
         
-        # Map fields
         self._set_field("name", p.name)
         self._set_field("aliases", p.aliases)
         self._set_field("appearance", p.appearance)
@@ -355,7 +335,7 @@ class CharacterCreatorView(ttk.Frame):
         
         self._set_field("speech_examples", p.speech_examples)
 
-    def _on_save(self):
+    def _on_save(self, exit_after=True):
         name = self._get_field("name")
         if not name:
             messagebox.showwarning("Error", "Name is required.")
@@ -363,19 +343,16 @@ class CharacterCreatorView(ttk.Frame):
 
         # Update Draft Object
         if not self.view_model.draft_profile:
-             # Create base if missing (manual flow)
              from src.modules.character.schema import CharacterProfile
              self.view_model.draft_profile = CharacterProfile(name=name)
 
         p = self.view_model.draft_profile
         p.name = name
         
-        # Split Lists
         p.aliases = [x.strip() for x in self._get_field("aliases").split(",") if x.strip()]
         p.speech_patterns = [x for x in self._get_field("speech_patterns").split("\n") if x.strip()]
         p.speech_examples = [x for x in self._get_field("speech_examples").split("\n") if x.strip()]
         
-        # Strings
         p.appearance = self._get_field("appearance")
         p.description = self._get_field("description")
         p.surface_persona = self._get_field("surface_persona")
@@ -385,41 +362,31 @@ class CharacterCreatorView(ttk.Frame):
         p.initial_situation = self._get_field("initial_situation")
         p.first_message = self._get_field("first_message")
 
-        # Prompt for File ID (if not already set or default to safe name?)
-        # User requested manual ID.
-        # Pre-fill?
         initial = self.view_model.current_file_id or "".join(c for c in name if c.isalnum() or c in ('_', '-')).strip()
         
-        file_id = simpledialog.askstring("Save Character", "Enter File Name (ID):\nThis determines the folder name.", initialvalue=initial, parent=self)
-        if not file_id:
-            return
+        if not self.view_model.current_file_id:
+             file_id = simpledialog.askstring("Save Character", "Enter File Name (ID):\nThis determines the folder name.", initialvalue=initial, parent=self)
+             if not file_id:
+                 return
+        else:
+             file_id = self.view_model.current_file_id
 
         if self.view_model.save_draft(file_id):
             messagebox.showinfo("Saved", f"Character '{name}' saved as '{file_id}'.")
-            self.master.show_view("character_select")
+            if exit_after:
+                self.master.show_view("character_select")
         else:
             messagebox.showerror("Error", "Save failed.")
 
     # --- Asset Logic ---
     def _get_asset_dir(self) -> Path:
-        # We need to know where to look.
-        # If draft_profile has name, we look in data/characters/{name}/assets
-        # BUT name might change in UI.
-        # We rely on `self.view_model.draft_profile.name` assuming it was set during import or save.
-        # Limitation: If user creates New, they must Save first to create dir?
-        # Or we use a temp dir?
-        # For simplicity: Assume assets work if profile is "Imported" or "Saved".
-        # If new, we might need to prompt to Save first?
-        
         p = self.view_model.draft_profile
         if p and p.name:
-             # Use View Model's explicit file ID if available
              if self.view_model.current_file_id:
                  from src.foundation.paths.manager import PathManager
                  pm = PathManager.get_instance()
                  return pm.get_characters_dir() / self.view_model.current_file_id / "assets"
 
-             # Fallback
              from src.foundation.paths.manager import PathManager
              pm = PathManager.get_instance()
              safe_name = "".join([c for c in p.name if c.isalnum() or c in (' ', '-', '_')]).strip()
@@ -460,16 +427,12 @@ class CharacterCreatorView(ttk.Frame):
              messagebox.showwarning("Warning", "Please Save Character or Import first to establish asset directory.")
              return
              
-        # 1. Select File
         src = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.webp")])
         if not src: return
         
-        # 2. Name Expression
-        # Default to "default" or "smile"?
         name = simpledialog.askstring("Asset Name", "Enter Expression Name (e.g. 'smile', 'angry', 'default'):")
         if not name: return
         
-        # 3. Copy
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
             
