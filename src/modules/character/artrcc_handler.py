@@ -108,10 +108,17 @@ class ARTRCCSaver:
         """
         try:
             # 1. Prepare Data
-            # We clone the profile to avoid modifying the runtime object
-            # (Though model_dump is safe)
             profile_dict = profile.model_dump()
             
+            # Sanitize Asset Map (Privacy: Convert Absolute Paths to Filenames)
+            if "asset_map" in profile_dict and profile_dict["asset_map"]:
+                new_map = {}
+                for k, v in profile_dict["asset_map"].items():
+                    # We store only the filename.
+                    # The Loader will assume files are in assets/ folder.
+                    new_map[k] = Path(v).name
+                profile_dict["asset_map"] = new_map
+
             # 2. Create ZIP
             with zipfile.ZipFile(target_path, 'w', compression=zipfile.ZIP_DEFLATED) as z:
                 # Write Profile
@@ -119,20 +126,13 @@ class ARTRCCSaver:
                 
                 # Write Assets
                 # profile.asset_map maps KEY -> ABSOLUTE PATH (Runtime)
-                # We want to store as assets/KEY.ext
-                
                 added_files = set()
                 
                 if profile.asset_map:
                     for key, abs_path_str in profile.asset_map.items():
                         abs_path = Path(abs_path_str)
                         if abs_path.exists():
-                            # Determine filename in zip
-                            # usage: assets/filename
-                            # We use the actual filename from disk, but what if key != filename?
-                            # Usually key is stem or filename.
-                            # Let's rely on the filename from the absolute path.
-                            
+                            # Usage: assets/filename
                             filename = abs_path.name
                             zip_entry_name = f"assets/{filename}"
                             
