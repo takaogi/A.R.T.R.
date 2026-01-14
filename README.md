@@ -1,6 +1,7 @@
 # A.R.T.R. Roleplay Client
 
-A.R.T.R. は、日本語での没入感の高いロールプレイ体験を目指して開発されたローカルLLMクライアントです。
+A.R.T.R. (Autonomous Real-Time Roleplay) は、日本語での没入感の高いロールプレイ体験を目指して開発された**AIロールプレイクライアント**です。
+OpenRouterなどのオンラインAPIを主軸としつつ、ローカルLLM（Ollama等）の接続にも対応しています。
 
 ## 特徴（Japanese Specialized）
 
