@@ -180,10 +180,17 @@ class CognitiveEngine:
                 
                 # Guidance Logic based on Silence
                 guidance_msg = ""
-                if total_silence > 1800: # 30 mins
-                    guidance_msg = "[System Guidance]: It has been over 30 minutes since the last user interaction. You should consider reducing your activity frequency (e.g. Wait Long)."
-                elif total_silence > 300: # 5 mins
-                    guidance_msg = "[System Guidance]: It has been over 5 minutes since the last user interaction. You should prioritize your own interests, hobbies, or autonomous goals instead of waiting for the user."
+                
+                # Rules: (Threshold Seconds, Message) - Checked in descending order
+                guidance_rules = [
+                    (300, "[System Guidance]: It has been over 5 minutes since the last user interaction. You should consider reducing your activity frequency (e.g. Wait Long)."),
+                    (60,  "[System Guidance]: It has been over 1 minute since the last user interaction. You should prioritize your own interests, hobbies, or autonomous goals instead of waiting for the user.")
+                ]
+                
+                for threshold, msg in sorted(guidance_rules, key=lambda x: x[0], reverse=True):
+                    if total_silence > threshold:
+                        guidance_msg = msg
+                        break
 
                 if trigger == "user_input":
                     # User spoke. No need for system prompt guidance.
@@ -197,7 +204,7 @@ class CognitiveEngine:
                     # User Request: Prioritize Total Time
                     content = f"[System]: User has been silent for {total_silence:.1f} seconds. (Last wait: {last_wait_duration}s)"
                     if guidance_msg:
-                        content += f"\n{guidance_msg}"
+                        content += f" {guidance_msg}"
                     ephemeral_messages.append({"role": "user", "content": content})
             else:
                 # Subsequent loops (Idle=0)
