@@ -35,3 +35,7 @@ config.yaml
 # Data
 data/
 characters_data/
+
+# Tests
+tests/
+src/tests/
