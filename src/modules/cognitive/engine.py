@@ -1,4 +1,5 @@
 import asyncio
+import time
 import re
 from typing import Optional, Dict, Any, List
 from src.foundation.config import ConfigManager
@@ -8,7 +9,7 @@ from src.modules.cognitive.pacemaker import Pacemaker
 from src.modules.memory.ingestor import MemoryIngestor
 from src.modules.cognitive.tools.registry import ToolRegistry
 from src.modules.llm_client.prompts.cognitive.schema import CognitiveResponse, Action
-from src.modules.llm_client.prompts.cognitive.schema import CognitiveResponse, Action
+
 from src.modules.memory.manager import MemoryManager
 from src.modules.character.manager import CharacterStateManager
 
@@ -68,8 +69,8 @@ class CognitiveEngine:
             if hasattr(search_tool, "set_llm_client"):
                 search_tool.set_llm_client(self.llm_client)
 
-        # Inject Manager into Schedule Tools
-        for tool_name in ["schedule_event", "check_schedule", "edit_schedule"]:
+        # Inject Manager into Schedule Tools AND Core Memory Tool
+        for tool_name in ["schedule_event", "check_schedule", "edit_schedule", "update_core_memory"]:
             tool = self.tool_registry.get_tool(tool_name)
             if tool and hasattr(tool, "set_manager"):
                 tool.set_manager(self.state_manager)
@@ -77,6 +78,7 @@ class CognitiveEngine:
         self.running = False
         self._current_task: Optional[asyncio.Task] = None
         self._wakeup_task: Optional[asyncio.Task] = None
+        self.last_user_input_time: float = 0.0
 
     # --- Public API for Triggers ---
 
@@ -89,6 +91,7 @@ class CognitiveEngine:
         """
         # 1. Update Association Buffer (Semantic)
         self.memory.update_associations(user_input, mode='input')
+        self.last_user_input_time = time.time()
 
         # 2. Cancel current task
         if self._current_task and not self._current_task.done():
@@ -110,10 +113,10 @@ class CognitiveEngine:
         self._current_task = asyncio.create_task(self._run_cognitive_loop(trigger="user_input"))
         await self._current_task 
 
-    async def trigger_system_event(self, event_text: str):
+    async def trigger_system_event(self, event_text: str, wait_duration: float = 0.0, log_to_memory: bool = True):
         """
         Public API: Called by Pacemaker or System.
-        1. Logs event ([System Event]).
+        1. Logs event ([System Event]) - OPTIONAL via log_to_memory.
         2. IF Idle: Starts cognitive cycle.
         3. IF Thinking: Do NOTHING (Input is queued in history).
         """
@@ -122,7 +125,11 @@ class CognitiveEngine:
         self.memory.update_associations(event_text, mode='random')
 
         # 2. Add to Memory (System Log)
-        self.memory.add_heartbeat_event(event_text)
+        if log_to_memory:
+            # Check if event_text already starts with [System Event] or [System Log] to avoid double prefixing in some viewers
+            # MemoryManager.add_heartbeat_event likely adds role='heartbeat' which formatter handles.
+            # So we just pass the text.
+            self.memory.add_heartbeat_event(event_text)
 
         # 3. Check if we should interrupt or ignore
         if self._current_task and not self._current_task.done():
@@ -134,8 +141,14 @@ class CognitiveEngine:
             self._wakeup_task.cancel()
         
         # 4. Start Cycle
+        # 4. Start Cycle
         print(f"[Engine] System Event triggering wake-up.")
-        self._current_task = asyncio.create_task(self._run_cognitive_loop(trigger="system_event"))
+        
+        # If log_to_memory is True, the event is in history -> Pass 0.0 to loop to suppress duplicate "Time passed" ephemeral.
+        # If log_to_memory is False (Ephemeral Only), pass duration -> Loop generates "X seconds passed" ephemeral.
+        loop_wait_duration = wait_duration if not log_to_memory else 0.0
+        
+        self._current_task = asyncio.create_task(self._run_cognitive_loop(trigger="system_event", last_wait_duration=loop_wait_duration))
 
     # --- Internal Logic ---
 
@@ -157,15 +170,43 @@ class CognitiveEngine:
                 break
             
             # Prepare Ephemeral Messages
-            ephemeral_messages = []
+            ephemeral_messages: List[Dict[str, Any]] = []
             if loop_count == 0:
                 # First loop: Check previous wait duration
+                
+                # Calculate total silence
+                total_silence = 0.0
+                if self.last_user_input_time > 0:
+                    total_silence = time.time() - self.last_user_input_time
+                
+                silence_info = f"(Total {total_silence:.1f}s since last User Input)"
+                
+                # Guidance Logic based on Silence
+                guidance_msg = ""
+                if total_silence > 1800: # 30 mins
+                    guidance_msg = "[System Guidance]: It has been over 30 minutes since the last user interaction. You should consider reducing your activity frequency (e.g. Wait Long)."
+                elif total_silence > 300: # 5 mins
+                    guidance_msg = "[System Guidance]: It has been over 5 minutes since the last user interaction. You should prioritize your own interests, hobbies, or autonomous goals instead of waiting for the user."
+
+                if trigger == "user_input":
+                    # User spoke. No need for system prompt guidance.
+                    pass
                 if last_wait_duration <= 10.0:
                     # Short wait or immediate -> Continue
-                    ephemeral_messages.append({"role": "user", "content": "[System]: Continue thinking..."})
+                    # User Request: Delete "Continue thinking" message ("Delete existence")
+                    pass 
                 else:
                     # Long wait -> Report time passed
-                    ephemeral_messages.append({"role": "user", "content": f"[System]: {last_wait_duration} seconds passed. No user input."})
+                    # User Request: Prioritize Total Time
+                    content = f"[System]: User has been silent for {total_silence:.1f} seconds. (Last wait: {last_wait_duration}s)"
+                    if guidance_msg:
+                        content += f"\n{guidance_msg}"
+                    ephemeral_messages.append({"role": "user", "content": content})
+            else:
+                # Subsequent loops (Idle=0)
+                # User Request: "Do not insert 'Continue thinking' every time."
+                # Removed the spammy message. The cycle itself is enough.
+                pass
 
             # Execute Step
             result = await self._execute_cognitive_cycle(ephemeral_messages=ephemeral_messages)
@@ -174,7 +215,12 @@ class CognitiveEngine:
             response: CognitiveResponse = result.get("response")
 
             if not response:
+                print("[Engine] Cycle returned no response (Error or Empty). Stopping loop.")
                 break
+            
+            if response.talk:
+                print(f"[Engine] Response Talk: {response.talk}")
+            print(f"[Engine] Response Idle: {response.idle}")
 
             # Handle Idle
             if response.idle == 0:
@@ -245,6 +291,14 @@ class CognitiveEngine:
         # 5. Execute Action List
         execution_results = []
         should_yield = False
+        
+        # Tools that should NOT result in a system log entry (Silent Tools)
+        SILENT_TOOLS = ["remember", "update_core_memory", "check_schedule", "gaze", "adjust_rapport"]
+        # Tools that ALWAYS force Idle=0 (Interactive/Next-Step needed)
+        INTERACTIVE_TOOLS = ["web_search", "schedule_event", "edit_schedule"]
+
+        has_interactive_action = False
+        tool_outputs = []
 
         # Execute actions from the 'actions' list
         for action in response.actions:
@@ -252,20 +306,46 @@ class CognitiveEngine:
             result = await self.tool_registry.execute(action)
             execution_results.append({"action": action.type, "result": result})
             
-            # Persist Result to Memory for Next Loop
+            if action.type in INTERACTIVE_TOOLS:
+                has_interactive_action = True
+
+            # Determine Logging
             if result.get("status") == "success":
                 # For specific tools (WebSearch, Recall), result content is important.
-                # For others (Talk), we might ignore or just log "Action Taken".
-                # Let's standardize logging the 'message' or 'results'.
-                msg = result.get("message") or str(result.get("results"))
-                self.memory_manager.add_system_event(f"Action '{action.type}' executed: {msg}")
+                if action.type not in SILENT_TOOLS:
+                    msg = result.get("message") or str(result.get("results"))
+                    # If interactive, collect to outputs instead of immediate log?
+                    # The user wants "Single System Log" for interactive tools? "あるときは必ず一枠にまとめて"
+                    if action.type in INTERACTIVE_TOOLS:
+                         tool_outputs.append(f"Action '{action.type}' executed: {msg}")
+                    else:
+                         self.memory_manager.add_system_event(f"Action '{action.type}' executed: {msg}")
+                else:
+                    print(f"[Engine] Silent Tool '{action.type}' executed. No log added.")
             else:
+                 # Error always logs
                  err = result.get("message") or result.get("error")
                  self.memory_manager.add_system_event(f"Action '{action.type}' failed: {err}")
+
+        # Batch Interactive Outputs
+        if tool_outputs:
+            combined_msg = "\n".join(tool_outputs)
+            self.memory_manager.add_system_event(combined_msg)
 
         # 6. Process 'Talk' (Mandatory Field)
         if response.talk:
             self.memory_manager.add_interaction("assistant", response.talk)
+
+        # 7. Override Idle for Interactive Actions
+        if has_interactive_action:
+            print(f"[Engine] Interactive Action detected. Forcing Idle=0.")
+            response.idle = 0
+
+        return {
+            "status": "success",
+            "response": response,
+            "results": execution_results
+        }
 
         return {
             "status": "success",
@@ -277,7 +357,8 @@ class CognitiveEngine:
         """Schedules a system event to wake up the engine after duration."""
         async def wakeup():
             await asyncio.sleep(duration)
-            await self.trigger_system_event(f"[System Event] Wait timeout ({duration}s). Resume thinking.")
+            # Use log_to_memory=False to ensure "Wait timeout" is ephemeral
+            await self.trigger_system_event(f"Wait timeout ({duration}s). Resume thinking.", wait_duration=duration, log_to_memory=False)
         
         self._wakeup_task = asyncio.create_task(wakeup())
 

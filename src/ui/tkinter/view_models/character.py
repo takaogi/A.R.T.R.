@@ -67,10 +67,11 @@ class CharacterViewModel:
              with open(profile_path, "r", encoding="utf-8") as f:
                  json_str = f.read()
              profile = CharacterProfile.model_validate_json(json_str)
-             await self.controller.load_character(
-                 profile_obj=profile, 
-                 directory_name=self.selected_character
-             )
+             # Inject the directory name as the ID to ensure consistency
+             if not profile.id:
+                 profile.id = self.selected_character
+             
+             await self.controller.load_character(profile_obj=profile)
              return True
         return False
 
@@ -85,11 +86,32 @@ class CharacterViewModel:
 
     async def import_character(self, path: str, file_id: str) -> bool:
         """
-        Direct Import from .charx/.json.
-        1. Load & Extract (via Loader) -> data/characters/{file_id}
-        2. Convert (via Creator) -> Profile
-        3. Save (Profile.json) -> data/characters/{file_id}/profile.json
+        Direct Import from .charx/.json/.artrcc.
         """
+        from src.modules.character.artrcc_handler import ARTRCCLoader
+        
+        p = Path(path)
+        
+        if p.suffix == '.artrcc':
+             loader = ARTRCCLoader()
+             # Load and extract to target directory (file_id)
+             res = loader.load(p, character_name_override=file_id)
+             if not res.success:
+                 print(f"ARTRCC Import Failed: {res.error}")
+                 return False
+             
+             data = res.data
+             profile_dict = data['profile_dict']
+             try:
+                 profile = CharacterProfile.model_validate(profile_dict)
+                 self.draft_profile = profile
+                 # It's already extracted, but we call save_draft to ensure consistency 
+                 # (schema updates) and trigger auto-generation of .artrcc (refresh)
+                 return self.save_draft(file_id)
+             except Exception as e:
+                 print(f"Profile Validation Failed: {e}")
+                 return False
+
         # 1. Load Raw (Assets extracted to file_id directory by override)
         load_res = self.loader.load_raw(Path(path), character_name_override=file_id)
         if not load_res.success:
@@ -149,13 +171,52 @@ class CharacterViewModel:
         target_dir = PathManager.get_instance().get_characters_dir() / safe_id
         target_dir.mkdir(parents=True, exist_ok=True)
         
+        self.draft_profile.id = safe_id
         self.current_file_id = safe_id
         
         # Save Profile
-        with open(target_dir / "profile.json", "w", encoding="utf-8") as f:
-            f.write(self.draft_profile.model_dump_json(indent=2))
+        try:
+            with open(target_dir / "profile.json", "w", encoding="utf-8") as f:
+                f.write(self.draft_profile.model_dump_json(indent=2))
+        except Exception as e:
+            print(f"Profile Save Failed: {e}")
+            return False
+
+        # Auto-Generate .artrcc
+        try:
+            from src.modules.character.artrcc_handler import ARTRCCSaver
+            
+            # Reconstruct asset_map from disk to include all current assets
+            assets_dir = target_dir / "assets"
+            new_map = {}
+            if assets_dir.exists():
+                for f in assets_dir.iterdir():
+                    if f.is_file():
+                        new_map[f.name] = str(f.absolute())
+            
+            # Temporarily update profile asset_map for export
+            # We don't want to persist absolute paths to profile.json if not needed, 
+            # but usually profile.json contains specific map.
+            # If we just use what's on disk, it's safer for .artrcc.
+            
+            # Clone profile for export
+            export_profile = self.draft_profile.model_copy()
+            export_profile.asset_map = new_map
+            
+            artrcc_path = target_dir / f"{safe_id}.artrcc"
+            ARTRCCSaver.save(export_profile, artrcc_path)
+            
+        except Exception as e:
+            print(f"Auto-Generate .artrcc Failed: {e}")
+            # Non-fatal?
             
         return True
+
+    def export_character(self, character_id: str, output_path: str) -> bool:
+        """Exports the character to .artrcc format at specific path."""
+        from src.modules.character.manager import CharacterStateManager
+        mgr = CharacterStateManager(character_id)
+        return mgr.export_character(output_path)
 
     def get_model_name_for_strategy(self, strategy: str) -> str:
         """Lookups configured model name for a strategy (e.g. 'character_generate')."""

@@ -1,9 +1,9 @@
 
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, simpledialog
+from tkinter import ttk, messagebox, scrolledtext, simpledialog, filedialog
 from src.ui.tkinter.view_models.character import CharacterViewModel
 from src.ui.tkinter.utils.asset_loader import AssetLoader
-from src.ui.tkinter.components.asset_drop import AssetDropZone
+from src.ui.tkinter.utils.asset_loader import AssetLoader
 import os
 import shutil
 from pathlib import Path
@@ -30,7 +30,8 @@ class CharacterCreatorView(ttk.Frame):
         button_frame = ttk.Frame(header_frame)
         button_frame.pack(side=tk.RIGHT, padx=20)
         
-        ttk.Button(button_frame, text="CharX 読込", command=self._on_import_charx).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="キャラデータ読み込み", command=self._on_import_charx).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="エクスポート (.artrcc)", command=self._on_export_artrcc).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="保存して終了", command=self._on_save).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="戻る", command=self._on_back).pack(side=tk.RIGHT)
         
@@ -248,10 +249,57 @@ class CharacterCreatorView(ttk.Frame):
         if hasattr(app, "loop"):
              app.loop.create_task(task())
 
+    def _on_export_artrcc(self):
+        """Exports current character to .artrcc"""
+        name = self._get_field("name")
+        if not name:
+             messagebox.showwarning("Warning", "Please enter a name first.")
+             return
+
+        # 1. Ask for Save Path
+        initial_file = f"{name}.artrcc"
+        # Sanitize filename
+        initial_file = "".join([c for c in initial_file if c.isalnum() or c in (' ', '-', '_', '.')]).strip()
+        
+        path = filedialog.asksaveasfilename(
+            defaultextension=".artrcc",
+            filetypes=[("A.R.T.R Character Card", "*.artrcc")],
+            initialfile=initial_file,
+            title="Export Character"
+        )
+        if not path: return
+
+        # 2. Ensure Saved First? Or Export from Draft?
+        # Ideally we export from Saved state on disk to ensure assets are consistent.
+        # But user might want to export without saving to DB?
+        # Current ARTRCCSaver expects Profile + Assets on Disk (for absolute paths in asset_map).
+        # So we MUST have the character saved in `characters_data` first for assets to exist cleanly.
+        
+        if not self.view_model.current_file_id:
+             if messagebox.askyesno("Save Required", "Character must be saved internally before exporting.\nSave now?"):
+                 self._on_save()
+                 # If save failed, current_file_id might still be None
+                 if not self.view_model.current_file_id:
+                     return
+             else:
+                 return
+
+        # 3. Export
+        file_id = self.view_model.current_file_id
+        
+        try:
+            success = self.view_model.export_character(file_id, path)
+            if success:
+                messagebox.showinfo("Success", f"Exported to {path}")
+            else:
+                messagebox.showerror("Error", "Export failed check logs.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Export Error: {e}")
+
     def _on_import_charx(self):
         path = filedialog.askopenfilename(
             title="Import Base Character",
-            filetypes=[("Character Files", "*.charx *.json"), ("All Files", "*.*")]
+            filetypes=[("Character Files", "*.charx *.json *.artrcc"), ("All Files", "*.*")]
         )
         if not path: return
         

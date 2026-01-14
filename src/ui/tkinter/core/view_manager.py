@@ -7,9 +7,10 @@ class ViewManager(ttk.Frame):
     """
     Manages navigation between different views (Frames).
     """
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, ui_config_service=None):
         super().__init__(parent)
         self.controller = controller
+        self.ui_config_service = ui_config_service
         self.current_view_name = None
         self.views: Dict[str, tk.Frame] = {}
         
@@ -56,5 +57,5 @@ class ViewManager(ttk.Frame):
             return CharacterCreatorView(self, self.controller)
         elif name == "chat":
             from src.ui.tkinter.views.chat import ChatView
-            return ChatView(self, self.controller)
+            return ChatView(self, self.controller, self.ui_config_service)
         return None

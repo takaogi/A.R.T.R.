@@ -31,6 +31,7 @@ class CharacterProfile(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Tags, Creator, Version, etc.")
     
     # Identity
+    id: str = Field("", description="Unique ID for directory storage (e.g. 'niko'). If empty, uses name.")
     name: str
     aliases: List[str] = Field(default_factory=list)
     appearance: str = Field("", description="Visual description for diffusion/RP")

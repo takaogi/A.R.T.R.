@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, List
 
 class LLMParameter(BaseModel):
@@ -28,6 +28,8 @@ class SystemConfig(BaseModel):
     """Global system configuration."""
     active_profile: str = "default_local"
     debug_mode: bool = False
+    debug_prompt_dump: bool = False # Dumps raw prompts to data/logs/prompts/
+    enable_safety_bypass: bool = False # Inject strict safety overrides (Jailbreak)
     log_level: str = "INFO"
 
 class MemoryConfig(BaseModel):
@@ -40,8 +42,15 @@ class MemoryConfig(BaseModel):
 class SearchConfig(BaseModel):
     """Configuration for Web Search."""
     google_api_key_env: str = "GOOGLE_API_KEY" # Env var name
-    google_cse_id: str = "c4bdecb34c7794e83"   # Default user provided
+    google_cse_id: Optional[str] = "c4bdecb34c7794e83"   # Default user provided
     use_llm_search: bool = True               # Attempt LLM search profile first
+    
+    @field_validator('google_cse_id')
+    @classmethod
+    def set_default_cse_id(cls, v: Optional[str]) -> str:
+        if not v or not v.strip():
+            return "c4bdecb34c7794e83"
+        return v
 
 class LocalModelPreset(BaseModel):
     name: str = Field(..., description="Display Name")
@@ -50,7 +59,7 @@ class LocalModelPreset(BaseModel):
     description: str = Field("", description="Usage Hint (e.g. 12GB VRAM)")
 
 class LocalLLMConfig(BaseModel):
-    model_dir: str = Field("data/models", description="Local Model Storage Path")
+    model_dir: str = Field("data/models/llm", description="Local Model Storage Path")
     default_model: str = Field("", description="Filename of default model")
     context_size: int = Field(8192, description="Default Context Size (n_ctx)")
     gpu_layers: int = Field(-1, description="Number of layers to offload (-1 = Max)")

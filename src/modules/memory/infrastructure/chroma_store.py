@@ -35,8 +35,7 @@ class ChromaVectorStore(VectorStore):
         count = len(documents)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in range(count)]
-        if metadatas is None:
-            metadatas = [{} for _ in range(count)]
+        # metadatas is None is acceptable for Chroma. Do not force empty dicts.
             
         # 1. Generate Embeddings (As "Passage")
         embeddings = self.embedding_service.embed_documents(documents)

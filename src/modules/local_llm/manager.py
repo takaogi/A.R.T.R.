@@ -132,6 +132,7 @@ class LocalModelManager:
         model_path = self.get_model_dir() / model_filename
         if not model_path.exists():
             logger.error(f"Model not found: {model_path}")
+            logger.error("Please download the model via the UI (Settings -> Local LLM) or place the .gguf file in the 'data/models/llm' directory.")
             return False
             
         # Command Construction
@@ -143,24 +144,30 @@ class LocalModelManager:
             "--model", str(model_path),
             "--n_ctx", str(self.config.context_size),
             "--n_gpu_layers", str(self.config.gpu_layers),
-            "--port", "8000" # Fixed port for now or config? Assuming standard 8000
+            "--port", "8000"
         ]
         
         try:
             logger.info(f"Launching Local Server: {' '.join(cmd)}")
-            # CREATE_NEW_CONSOLE helps prevent killing the parent if using Ctrl+C, 
-            # but usually for detached service we might want simpler Popen.
-            # Using creationflags=subprocess.CREATE_NEW_CONSOLE on Windows shows a separate window.
-            # The user might prefer hidden? But for debug, visible is fine.
-            # Let's use standard Popen.
             self.process = subprocess.Popen(
                 cmd,
                 # stdout=subprocess.PIPE, 
                 # stderr=subprocess.PIPE
-                # We let it pipe to main console or just detach?
-                # If we pipe, we can log.
             )
-            return True
+            
+            # Check for immediate failure (e.g. corrupted model)
+            try:
+                # Wait 1s to see if it crashes immediately
+                self.process.wait(timeout=1.0)
+                # If we get here, it exited (crashed)
+                ret = self.process.returncode
+                logger.error(f"Server exited immediately with code {ret}. Check console for details.")
+                self.process = None
+                return False
+            except subprocess.TimeoutExpired:
+                # Still running after 1s -> Good
+                return True
+                
         except Exception as e:
             logger.error(f"Failed to launch server: {e}")
             return False

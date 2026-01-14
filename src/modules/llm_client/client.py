@@ -109,5 +109,34 @@ class LLMClient:
             tools=data.get("tools")
         )
 
+        # Debug: Dump Prompt
+        try:
+            from src.foundation.config import ConfigManager
+            cfg = ConfigManager.get_instance().config
+            if cfg and cfg.system.debug_prompt_dump:
+                import json
+                import datetime
+                from pathlib import Path
+                
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                log_dir = Path("data/logs/prompts")
+                log_dir.mkdir(parents=True, exist_ok=True)
+                
+                log_file = log_dir / f"{ts}_{prompt_name}.txt"
+                
+                with open(log_file, "w", encoding="utf-8") as f:
+                    f.write(f"Prompt Strategy: {prompt_name}\n")
+                    f.write(f"Model: {profile.model_name}\n")
+                    f.write("-" * 40 + "\n")
+                    for msg in messages:
+                        role = msg.get('role', 'unknown')
+                        content = msg.get('content', '')
+                        f.write(f"\n[{role.upper()}]\n{content}\n")
+                        f.write("-" * 20 + "\n")
+                        
+                logger.debug(f"Dumped prompt to {log_file}")
+        except Exception as e:
+            logger.warning(f"Failed to dump prompt: {e}")
+
         logger.info(f"LLMClient Executing: {prompt_name} -> {profile.model_name} (via {profile.provider})")
         return await provider.execute(req)

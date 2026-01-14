@@ -1,5 +1,7 @@
 system:
   debug_mode: true
+  debug_prompt_dump: false # Set to true to save full prompts to data/logs/prompts/
+  enable_safety_bypass: false # Inject Jailbreak/Safety overrides
   log_level: "DEBUG"
 
 memory:
@@ -9,11 +11,11 @@ memory:
   local_embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 search:
-  google_cse_id: ""  # Set your Google CSE ID here
+  google_cse_id:   #空欄なら内部で設定されたIDを使用する
   use_llm_search: true
 
 local_llm:
-  model_dir: "data/models"
+  model_dir: "data/models/llm"
   default_model: "MN-12B-Mag-Mell-Q4_K_M.gguf"
   context_size: 16384
   gpu_layers: -1

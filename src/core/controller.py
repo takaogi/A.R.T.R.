@@ -97,16 +97,10 @@ class CoreController:
         # Meta
         self.tool_registry.register("update_core_memory", UpdateCoreMemoryTool())
 
-    async def load_character(self, output_path: str = None, profile_obj: CharacterProfile = None, directory_name: str = None):
+    async def load_character(self, output_path: str = None, profile_obj: CharacterProfile = None):
         """
         Loads a character and initializes the Cognitive Engine.
         Can allow loading from a compiled JSON/CharX path OR a direct Profile object.
-        
-        Args:
-            output_path: Path to character file (not fully implemented)
-            profile_obj: CharacterProfile object to load
-            directory_name: Explicit directory name (ID) for the character. 
-                           If None, defaults to profile_obj.name.
         """
         if not self._is_initialized:
             raise RuntimeError("System not initialized. Call initialize_system() first.")
@@ -121,14 +115,12 @@ class CoreController:
         else:
             raise ValueError("Must provide either output_path or profile_obj.")
 
-        # Determine explicit directory name or fallback to display name
-        # (Legacy behavior used display name which caused path mismatches)
-        target_dir_name = directory_name if directory_name else self.current_profile.name
-
-        logger.info(f"CoreController: Loading character '{self.current_profile.name}' (Dir: {target_dir_name})...")
+        logger.info(f"CoreController: Loading character '{self.current_profile.name}'...")
 
         # 4. State Manager
-        self.character_manager = CharacterStateManager(target_dir_name)
+        # Use ID if available, else Name
+        char_key = self.current_profile.id if self.current_profile.id else self.current_profile.name
+        self.character_manager = CharacterStateManager(char_key)
         
         # 5. Engine
         self.engine = CognitiveEngine(
@@ -140,28 +132,64 @@ class CoreController:
             character_manager=self.character_manager
         )
         
+        # 6. Bind Persistence (History)
+        # Assuming char_key is the directory name ID
+        from src.foundation.paths.manager import PathManager
+        history_path = PathManager.get_instance().get_characters_dir() / char_key / "history.json"
+        
+        logger.info(f"CoreController: Binding history to {history_path}")
+        self.memory_manager.bind_persistence(history_path)
+        
+        # 7. Session Initialization Logic
+        try:
+             import time
+             is_first_run = self.memory_manager.is_empty()
+             
+             if is_first_run:
+                 # First Run Logic
+                 if self.current_profile.first_message:
+                     logger.info("CoreController: Inserting First Message.")
+                     self.memory_manager.add_interaction("assistant", self.current_profile.first_message)
+             else:
+                 # Resume Logic
+                 last_ts = self.memory_manager.get_last_timestamp()
+                 if last_ts > 0:
+                     current_ts = time.time()
+                     delta_seconds = current_ts - last_ts
+                     hours_passed = delta_seconds / 3600.0
+                     
+                     # Only log if significant time passed (e.g. > 1 minute? Or just always?)
+                     # User request: "ユーザーが入室しました　前回の終了（最後の会話履歴）から何時間経ちました"
+                     # Let's format nicely.
+                     
+                     time_str = ""
+                     if hours_passed < 1.0:
+                         mins = int(delta_seconds / 60)
+                         time_str = f"{mins} minutes"
+                     else:
+                         time_str = f"{hours_passed:.1f} hours"
+                         
+                     msg = f"User entered the room. {time_str} have passed since the last session."
+                     self.memory_manager.add_system_event(msg)
+                     logger.info(f"CoreController: Resume Log: {msg}")
+
+        except Exception as e:
+            logger.error(f"CoreController: Session Init Error: {e}")
+            
         logger.info("CoreController: Engine Ready.")
 
-    async def handle_user_input(self, text: str) -> Optional[CognitiveResponse]:
+    async def handle_user_input(self, text: str) -> None:
         """
         Main Loop Entry Point.
-        Feeds user input to memory and executes a cognitive cycle via Engine's public API.
-        This ensures 'Thinking' state is tracked and Idle/Continuous loops are respected.
+        Feeds user input to memory and executes a cognitive cycle.
         """
         if not self.engine:
             raise RuntimeError("Engine not loaded. Load a character first.")
             
         logger.info(f"CoreController: User Input: {text}")
         
-        # Use Engine's public API for correct lifecycle management (Task tracking, Interrupts, Idle Loop)
+        # Delegate to Engine's Autonomous Loop
         await self.engine.start_user_turn(text)
-        
-        return None
-        
-        # NOTE: Previous logic was bypassing the Engine loop and doing single-shot execution.
-        # This caused "Thinking" indicator failure and ignored 'idle' (continuous thought).
-        # We now rely on Engine to manage the loop.
-
 
     def get_history(self) -> List[Dict[str, Any]]:
         """Returns visual history."""

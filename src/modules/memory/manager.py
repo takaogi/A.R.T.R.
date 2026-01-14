@@ -1,6 +1,8 @@
 import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
 import numpy as np
 from src.foundation.config import ConfigManager
 from src.foundation.logging import logger
@@ -16,6 +18,10 @@ class MemoryManager:
     """
     def __init__(self, config_manager: ConfigManager):
         self.config = config_manager
+        
+        
+        # Persistence
+        self.persistence_path: Optional[Path] = None
         
         # Volatile Memory
         self.conversations: List[Dict[str, Any]] = []
@@ -54,21 +60,76 @@ class MemoryManager:
         """Adds a dialogue interaction."""
         entry = {"role": role, "content": content, "timestamp": time.time()}
         self.conversations.append(entry)
+        self.save_history()
 
     def add_system_event(self, content: str):
         """Adds a system event (Tool Log)."""
         entry = {"role": "log", "content": content, "timestamp": time.time()}
         self.conversations.append(entry)
+        self.save_history()
 
     def add_heartbeat_event(self, content: str):
         """Adds a heartbeat event (Pacemaker)."""
         entry = {"role": "heartbeat", "content": content, "timestamp": time.time()}
         self.conversations.append(entry)
+        self.save_history()
 
     def add_thought(self, content: str):
         """Adds an internal thought."""
         entry = {"role": "thought", "content": content, "timestamp": time.time()}
         self.thoughts.append(entry)
+        self.save_history()
+
+    # --- Persistence ---
+    
+    def bind_persistence(self, path: Path):
+        """Binds memory to a file path and loads existing history."""
+        self.persistence_path = path
+        self._load_history()
+
+    def _load_history(self):
+        """Loads history from JSON."""
+        if not self.persistence_path or not self.persistence_path.exists():
+            return
+
+        try:
+            with open(self.persistence_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self.conversations = data.get("conversations", [])
+                self.thoughts = data.get("thoughts", [])
+            logger.info(f"MemoryManager: Loaded history from {self.persistence_path}")
+        except Exception as e:
+            logger.error(f"MemoryManager: Failed to load history: {e}")
+
+    def save_history(self):
+        """Saves history to JSON."""
+        if not self.persistence_path:
+            return
+
+        try:
+            # Simple Write
+            data = {
+                "conversations": self.conversations,
+                "thoughts": self.thoughts
+            }
+            # Ensure directory exists
+            self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(self.persistence_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"MemoryManager: Failed to save history: {e}")
+
+    def is_empty(self) -> bool:
+        """Returns True if no conversations exist."""
+        return len(self.conversations) == 0
+
+    def get_last_timestamp(self) -> float:
+        """Returns the timestamp of the last interaction or thought."""
+        # Check both conversations and thoughts
+        last_conv = self.conversations[-1].get("timestamp", 0) if self.conversations else 0
+        last_thought = self.thoughts[-1].get("timestamp", 0) if self.thoughts else 0
+        return max(last_conv, last_thought)
 
     def get_context_history(self) -> List[Dict[str, Any]]:
         """Retrieves merged history."""
@@ -80,7 +141,7 @@ class MemoryManager:
         recent_thoughts = self.thoughts[-thought_limit:] if thought_limit > 0 else []
 
         merged = recent_convs + recent_thoughts
-        merged.sort(key=lambda x: x["timestamp"])
+        merged.sort(key=lambda x: x.get("timestamp", 0))
         return merged
 
     def get_formatted_history_for_llm(self) -> List[Dict[str, Any]]:

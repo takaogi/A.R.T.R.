@@ -110,6 +110,11 @@ class CharacterStateManager:
             self.state.current_expression = expression
             self.save_state()
 
+    def update_user_profile(self, info: str):
+        """Updates the user profile (Core Memory)."""
+        self.state.user_profile = info
+        self.save_state()
+
     # --- Schedule Edit Methods ---
     def find_event_by_content(self, query: str) -> Optional[ScheduleEvent]:
         """Finds the first event containing query in title or description (case-insensitive)."""
@@ -141,3 +146,39 @@ class CharacterStateManager:
                 self.save_state()
                 return True
         return False
+
+    def export_character(self, output_path: str) -> bool:
+        """Exports the character to .artrcc format at output_path."""
+        from src.modules.character.schema import CharacterProfile
+        from src.modules.character.artrcc_handler import ARTRCCSaver
+        import json
+        
+        # 1. Load Profile
+        char_root = self.paths.get_characters_dir() / self.character_name
+        profile_path = char_root / "profile.json"
+        
+        if not profile_path.exists():
+            logger.error(f"Cannot export: profile.json not found for {self.character_name}")
+            return False
+            
+        try:
+            with open(profile_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            profile = CharacterProfile(**data)
+            
+            # 2. Inject Asset Map (Rebuild from disk to ensure latest)
+            assets_dir = char_root / "assets"
+            asset_map = {}
+            if assets_dir.exists():
+                for f in assets_dir.iterdir():
+                    if f.is_file():
+                        asset_map[f.name] = str(f.absolute())
+            profile.asset_map = asset_map
+            
+            # 3. Save
+            res = ARTRCCSaver.save(profile, Path(output_path))
+            return res.success
+            
+        except Exception as e:
+            logger.error(f"Export failed: {e}")
+            return False

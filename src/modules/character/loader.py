@@ -81,7 +81,8 @@ class CharXLoader:
                     "character_root": str(char_root),
                     "character_name": safe_name,
                     "asset_map": optimized_map,
-                    "default_image_key": default_image_key
+                    "default_image_key": default_image_key,
+                    "default_image_filename": default_image_rel_path # Added explicit filename
                 })
 
         except Exception as e:
@@ -148,51 +149,79 @@ class CharXLoader:
         if not raw_map:
             return {}, ""
 
-        # Gather clean stems (no extension) to calculate prefix
-        # We process keys: "MyChar_Smile.png" -> "MyChar_Smile"
-        filename_keys = list(raw_map.keys())
-        stems = [Path(f).stem for f in filename_keys]
+        # 1. Identify default stem/keys (to exclude from prefix calc)
+        default_stems = set()
+        default_key_final = ""
         
-        # Calculate common prefix
-        prefix = os.path.commonprefix(stems)
-        
-        # Safety: Prefix must be reasonable length (>=3) to avoid stripping "S" from "Smile" if "Sad" exists (common "S"?)
-        # Actually commonprefix of "Smile", "Sad" is "S". We don't want to strip "S".
-        # Assuming format "CharacterName_Expression".
-        # Valid prefix usually ends with _ or - or space, or is just the name.
-        
-        optimized_map = {}
-        default_key = ""
-        
-        # Refine prefix: prefer ending with separator
-        if len(stems) > 1 and len(prefix) >= 3:
-            # Check if prefix looks like a name tag
-            logger.debug(f"Detected common asset prefix: '{prefix}'")
-        else:
-            prefix = "" # Too short or no commonality
+        # Helper to get pure stem
+        def get_stem(k):
+            s = k
+            while True:
+                p = Path(s)
+                if p.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp', '.json']:
+                    s = p.stem
+                else:
+                    break
+            return s
 
-        for fname in filename_keys:
-            stem = Path(fname).stem
-            final_key = stem
-            
-            if prefix and stem.startswith(prefix):
-                # Strip
-                candidate = stem[len(prefix):]
-                # If separator remains, strip it
-                if candidate and candidate[0] in ['_', '-', ' ']:
-                    candidate = candidate[1:]
+        # Pass 1: Identify Defaults
+        for k, v in raw_map.items():
+            is_default = False
+            # Check by path
+            if default_filename and (os.path.basename(v).lower() == os.path.basename(default_filename).lower()):
+                is_default = True
+            # Check by key convention
+            elif k.lower() in ["default", "main"]:
+                is_default = True
                 
-                # If stripping resulted in empty or too short, revert
-                if len(candidate) >= 2:
-                    final_key = candidate
-            
-            # Add to map
-            # Collision handling? If "Char_A.png" and "Char_A.jpg" -> "A" collision.
-            # Overwrite for now (Loader implies latest wins or single format preferred)
-            optimized_map[final_key] = raw_map[fname]
-            
-            # Check if this was the default image
-            if fname == default_filename:
-                default_key = final_key
+            if is_default:
+                default_stems.add(get_stem(k))
 
-        return optimized_map, default_key
+        # Pass 2: Collect Stems for Prefix (Non-Defaults only)
+        other_stems = []
+        filename_keys = list(raw_map.keys())
+        
+        for k in filename_keys:
+            stem = get_stem(k)
+            if stem in default_stems:
+                continue
+            other_stems.append(stem)
+        
+        # 2. Calculate Prefix
+        prefix = ""
+        if len(other_stems) > 1:
+            prefix = os.path.commonprefix(other_stems)
+            
+        # Refine prefix
+        if prefix and len(prefix) >= 3:
+             logger.debug(f"Detected common asset prefix: '{prefix}'")
+        else:
+            prefix = ""
+
+        # 3. Build Optimized Map
+        optimized_map = {}
+        
+        for k, v in raw_map.items():
+            stem = get_stem(k)
+            
+            # Determine if this specific entry is a default image
+            is_this_default = False
+            if default_filename and (os.path.basename(v).lower() == os.path.basename(default_filename).lower()):
+                is_this_default = True
+            elif k.lower() in ["default", "main"]: # e.g. "main.png"
+                 is_this_default = True
+
+            new_key = stem
+            if not is_this_default and prefix and stem.startswith(prefix):
+                 new_key = stem[len(prefix):]
+                 # Clean leading separator
+                 if new_key and new_key[0] in ['_', '-', ' ']:
+                     new_key = new_key[1:]
+            
+            # Conflict resolution? (Overwrite for now)
+            optimized_map[new_key] = v
+            
+            if is_this_default:
+                default_key_final = new_key
+
+        return optimized_map, default_key_final

@@ -12,7 +12,13 @@ class RememberTool(BaseTool[RememberAction]):
 
     async def execute(self, action: RememberAction):
         logger.info(f"[REMEMBER] {action.content}")
-        self.memory.archive_memory(action.content)
+        # Use correct API method with Metadata
+        from datetime import datetime
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "source": "cognitive_reflection"
+        }
+        self.memory.add_memory_to_ltm(action.content, metadata=metadata)
         return {"status": "success", "message": "Memory archived."}
 
 class RecallTool(BaseTool[RecallAction]):

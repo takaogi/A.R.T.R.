@@ -23,30 +23,48 @@ class App(tk.Tk):
         # Initialize Core Controller (Non-blocking init scheduled)
         self.controller = CoreController()
         
+        # Initialize Services
+        from src.ui.tkinter.services.ui_config_service import UIConfigService
+        self.ui_config_service = UIConfigService()
+        
         # Setup Styles
         self._setup_styles()
         
         # UI Layout
         # Root Grid: 
-        # Row 0: Content (Expandable)
-        # Row 1: Status Bar (Fixed)
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0)
+        # Row 0: Header (Settings) - NEW
+        # Row 1: Content (Expandable)
+        # Row 2: Status Bar (Fixed)
+        self.grid_rowconfigure(0, weight=0) # Header
+        self.grid_rowconfigure(1, weight=1) # Content
+        self.grid_rowconfigure(2, weight=0) # Status
         self.grid_columnconfigure(0, weight=1)
+
+        # Header Frame
+        header_frame = ttk.Frame(self)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=2)
+        
+        # Settings Button
+        btn_settings = ttk.Button(header_frame, text="⚙ Settings", command=self._open_settings)
+        btn_settings.pack(side=tk.LEFT)
         
         # Status Bar
         self.status_bar = StatusBar(self, self.controller)
-        self.status_bar.grid(row=1, column=0, sticky="ew")
+        self.status_bar.grid(row=2, column=0, sticky="ew")
         
-        # View Manager
-        self.view_manager = ViewManager(self, self.controller)
-        self.view_manager.grid(row=0, column=0, sticky="nsew")
+        # ViewManager
+        self.view_manager = ViewManager(self, self.controller, self.ui_config_service)
+        self.view_manager.grid(row=1, column=0, sticky="nsew")
         
         # Start System Init
         self.loop.create_task(self._bootstrap_system())
         
         # Start UI Update Loop
         self._on_update()
+
+    def _open_settings(self):
+        from src.ui.tkinter.views.ui_config_window import UIConfigWindow
+        UIConfigWindow(self, self.ui_config_service)
 
     def _setup_styles(self):
         style = ttk.Style(self)

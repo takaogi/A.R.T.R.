@@ -17,53 +17,110 @@ class CharacterImporter:
     async def import_from_file(self, file_path: str, override_profile: Any = None) -> Result[CharacterProfile]:
         """
         Full workflow:
-        1. Load/Extract raw data from file (.charx, .json, .png)
-        2. Convert via LLM
+        1. Load/Extract raw data from file (.charx, .json, .png, .artrcc)
+        2. Convert via LLM (Skip for .artrcc)
         3. Save/Persist to Character Storage
+        4. Auto-Generate .artrcc archive
         """
         from pathlib import Path
         from src.modules.character.loader import CharXLoader
+        from src.modules.character.artrcc_handler import ARTRCCLoader, ARTRCCSaver
         
         path_obj = Path(file_path)
-        loader = CharXLoader()
         
         # 1. Load Raw
-        # Supports .charx primarily for now
         if path_obj.suffix == '.charx':
+            loader = CharXLoader()
             res_load = loader.load_raw(path_obj)
+            if not res_load.success:
+                return Result.fail(res_load.error)
+            params = res_load.data
+            
+            # 2. Convert (LLM)
+            raw_json = params['raw_json']
+            res_convert = await self.generate_profile(raw_json, override_profile=override_profile)
+            if not res_convert.success:
+                return Result.fail(res_convert.error)
+            profile = res_convert.data
+            # Update profile with Asset Paths
+            # Use filename if available, else key (fallback)
+            raw_filename = params.get('default_image_filename')
+            if raw_filename:
+                profile.default_image_path = raw_filename
+            else:
+                profile.default_image_path = params.get('default_image_key', "")
+            
+            profile.asset_map = params.get('asset_map', {})
+            
+            target_root = params['character_root'] # Where CharXLoader extracted assets
+
+        elif path_obj.suffix == '.artrcc':
+            # Direct Load (No LLM)
+            loader = ARTRCCLoader()
+            res_load = loader.load(path_obj)
+            if not res_load.success:
+                return Result.fail(res_load.error)
+            
+            data = res_load.data
+            profile_dict = data['profile_dict']
+            target_root = data['character_root']
+            
+            try:
+                profile = CharacterProfile.model_validate(profile_dict)
+            except Exception as e:
+                return Result.fail(f"Invalid .artrcc profile: {e}")
+                
         else:
             return Result.fail(f"Unsupported file format: {path_obj.suffix}")
-            
-        if not res_load.success:
-            return Result.fail(res_load.error)
-            
-        params = res_load.data
-        raw_json = params['raw_json']
-        # character_root = params['character_root'] # Path where assets are
-        
-        # 2. Convert
-        res_convert = await self.generate_profile(raw_json, override_profile=override_profile)
-        if not res_convert.success:
-            return Result.fail(res_convert.error)
-            
-        profile = res_convert.data
-        
+
         # 3. Finalize & Save
-        # Save profile.json in the character root
-        # Update profile with Asset Paths
-        profile.default_image_path = params['default_image_key']
-        profile.asset_map = params['asset_map']
-        
-        # Save to disk
         try:
-             import json
-             target_dir = Path(params['character_root'])
+             target_dir = Path(target_root)
              profile_path = target_dir / "profile.json"
              
              with open(profile_path, 'w', encoding='utf-8') as f:
                  f.write(profile.model_dump_json(indent=2))
                  
              logger.info(f"Character Saved to: {profile_path}")
+             
+             # 4. Auto-Generate .artrcc
+             # We want to ensure the .artrcc file exists in the character directory
+             # Filename: {id}.artrcc
+             artrcc_path = target_dir / f"{profile.id or target_dir.name}.artrcc"
+             
+             # Ensure profile has absolute paths in asset_map for Saver?
+             # CharXLoader returns absolute paths in asset_map.
+             # ARTRCCLoader extracts to assets_dir and returns profile_dict.
+             # profile_dict might have relative paths/keys? 
+             # ARTRCCSaver expects asset_map to have Absolute Paths if it reads from disk?
+             # Wait, ARTRCCSaver: 
+             # if profile.asset_map: for key, abs_path_str in profile.asset_map.items(): if Path(abs_path_str).exists()...
+             
+             # If we loaded from .artrcc, profile.asset_map in memory might just be keys if we validated from JSON?
+             # We need to ensure asset_map points to the extracted assets in `target_dir/assets`.
+             
+             if path_obj.suffix == '.artrcc':
+                 # Reconstruct asset_map to absolute paths
+                 # Assuming keys match filenames in assets/
+                 new_map = {}
+                 assets_dir = target_dir / "assets"
+                 if assets_dir.exists():
+                     for f in assets_dir.iterdir():
+                         if f.is_file():
+                             new_map[f.name] = str(f.absolute())
+                 profile.asset_map = new_map
+                 # Save profile with updated map? No, we just need it for Saver.
+                 # Actually we should update profile.json on disk with valid map?
+                 # ARTRCC format usually just keys? 
+                 # Let's keep runtime profile having absolute paths.
+             
+             # Save ARTRCC
+             res_save = ARTRCCSaver.save(profile, artrcc_path)
+             if res_save.success:
+                 logger.info(f"Auto-Generated .artrcc: {artrcc_path}")
+             else:
+                 logger.warning(f"Failed to auto-generate .artrcc: {res_save.error}")
+
              return Result.ok(profile)
              
         except Exception as e:

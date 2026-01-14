@@ -44,7 +44,7 @@ class PathManager:
         return self._root_dir
 
     def get_log_dir(self) -> Path:
-        path = self._root_dir / "logs"
+        path = self._root_dir / "data" / "logs"
         path.mkdir(exist_ok=True)
         return path
 
@@ -59,7 +59,7 @@ class PathManager:
         return path
         
     def get_models_dir(self) -> Path:
-        path = self._root_dir / "models"
+        path = self._root_dir / "data" / "models"
         path.mkdir(exist_ok=True)
         return path
 

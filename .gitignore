@@ -19,7 +19,6 @@ build/
 *.egg-info/
 
 # Logs
-logs/
 *.log
 
 # Environment Variables
@@ -30,11 +29,9 @@ logs/
 .coverage
 htmlcov/
 tests/output/
-tests/output/
 scripts/
 config.yaml
 
-# Data & Models
+# Data
 data/
 characters_data/
-models/

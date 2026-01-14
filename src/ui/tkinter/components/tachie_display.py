@@ -22,13 +22,14 @@ class TachieDisplay(ttk.Frame):
         # Bind resize
         self.bind("<Configure>", self._on_resize)
 
-    def set_character(self, profile, directory_name: str = None):
+    def set_character(self, profile):
         """
         Sets the character profile to display.
         """
-        # Use explicit directory name if available, else fallback to profile name
-        self.char_name = directory_name if directory_name else profile.name
+        self.char_name = profile.name
+        self.char_id = profile.id if profile.id else profile.name
         self.asset_map = profile.asset_map
+        self.default_image_path = profile.default_image_path
         self.update_expression("default")
 
     def update_expression(self, expression: str):
@@ -46,7 +47,15 @@ class TachieDisplay(ttk.Frame):
         height = self.winfo_height()
         if height < 100: height = 600
         
-        img = AssetLoader.get_tachie(self.char_name, self.current_expression, asset_map=self.asset_map, max_height=height)
+        # Use ID for asset lookup
+        target_char = getattr(self, "char_id", self.char_name)
+        img = AssetLoader.get_tachie(
+            target_char, 
+            self.current_expression, 
+            asset_map=self.asset_map, 
+            default_image_path=getattr(self, "default_image_path", None),
+            max_height=height
+        )
         
         self.canvas.delete("all")
         if img:

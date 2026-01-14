@@ -56,7 +56,7 @@ class CharacterSelectView(ttk.Frame):
         # Action Buttons (Standard Theme)
         ttk.Button(button_frame, text="新規作成", command=self._on_new_char).pack(side=tk.LEFT, padx=5)
                  
-        ttk.Button(button_frame, text="CharX 取込", command=self._on_import_charx).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="キャラデータ読み込み", command=self._on_import_charx).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(button_frame, text="削除", command=self._on_delete).pack(side=tk.LEFT, padx=5)
 
@@ -136,10 +136,10 @@ class CharacterSelectView(ttk.Frame):
              logging.error("Could not find event loop.")
 
     def _on_import_charx(self):
-        """Import .charx file."""
+        """Import .charx/.artrcc file."""
         path = filedialog.askopenfilename(
             title="Select Character File",
-            filetypes=[("Character Files", "*.charx *.json"), ("All Files", "*.*")]
+            filetypes=[("Character Files", "*.charx *.json *.artrcc"), ("All Files", "*.*")]
         )
         if not path:
             return
