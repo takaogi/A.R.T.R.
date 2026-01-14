@@ -32,15 +32,10 @@ class CognitiveEngine:
         
         # Components
         self.memory_manager = memory_manager
-        self.character = character_manager
         self.state_manager = character_manager
-        self.llm_client = llm_client
         
         # Echo Ingestor
         self.ingestor = MemoryIngestor(self.memory_manager, self.llm_client)
-        
-        # State Manager (Manages dynamic state like Rapport)
-        self.state_manager = character_manager
         
         # Inject Manager into Tools (Specifically AdjustRapport)
         rapport_tool = self.tool_registry.get_tool("adjust_rapport")
@@ -119,14 +114,14 @@ class CognitiveEngine:
         """
         # 1. Update Association Buffer (Random - Pacemaker)
         # Only if trigger is pacemaker related? Text usually contains "[System Event]"
-        self.memory.update_associations(event_text, mode='random')
+        self.memory_manager.update_associations(event_text, mode='random')
 
         # 2. Add to Memory (System Log)
         if log_to_memory:
             # Check if event_text already starts with [System Event] or [System Log] to avoid double prefixing in some viewers
             # MemoryManager.add_heartbeat_event likely adds role='heartbeat' which formatter handles.
             # So we just pass the text.
-            self.memory.add_heartbeat_event(event_text)
+            self.memory_manager.add_heartbeat_event(event_text)
 
         # 3. Check if we should interrupt or ignore
         if self._current_task and not self._current_task.done():
