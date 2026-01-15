@@ -38,6 +38,7 @@ class MemoryConfig(BaseModel):
     thought_limit: int = 10
     embedding_provider: str = Field("local", description="openai or local")
     local_embedding_model: str = Field("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", description="Model for local fastembed")
+    include_thoughts_in_history: bool = Field(False, description="Whether to include 'thought' messages in LLM context")
 
 class SearchConfig(BaseModel):
     """Configuration for Web Search."""

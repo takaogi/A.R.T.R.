@@ -34,7 +34,8 @@ class MemoryManager:
         self.organizer = MemoryOrganizer()
         
         # Formatter
-        self.formatter = ConversationFormatter()
+        include_thoughts = getattr(self.config.config.memory, "include_thoughts_in_history", False)
+        self.formatter = ConversationFormatter(include_thoughts=include_thoughts)
         
         # Long-Term Infrastructure
         try:

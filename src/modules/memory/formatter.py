@@ -5,6 +5,9 @@ class ConversationFormatter:
     Handles formatting of conversation history for LLM consumption and UI restoration.
     """
     
+    def __init__(self, include_thoughts: bool = False):
+        self.include_thoughts = include_thoughts
+
     def format_for_llm(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Formats history for LLM Context.
@@ -24,6 +27,10 @@ class ConversationFormatter:
             
             # --- 1. Handle Assistant-side Roles (Thought / Assistant / Talk) ---
             if role in ["thought", "assistant"]:
+                # If thoughts are disabled and this is a thought, SKIP IT.
+                if role == "thought" and not self.include_thoughts:
+                    continue
+
                 if current_merge_buffer is None:
                     # Start new buffer
                     current_merge_buffer = {"role": "assistant", "content": ""}
