@@ -64,6 +64,8 @@ class LocalLLMConfig(BaseModel):
     default_model: str = Field("", description="Filename of default model")
     context_size: int = Field(8192, description="Default Context Size (n_ctx)")
     gpu_layers: int = Field(-1, description="Number of layers to offload (-1 = Max)")
+    main_gpu: int = Field(0, description="Main GPU ID to use")
+    tensor_split: Optional[List[float]] = Field(None, description="Fraction of model to offload to each GPU")
     presets: List[LocalModelPreset] = Field(default_factory=list, description="Downloadable Presets")
 
 class PacemakerConfig(BaseModel):

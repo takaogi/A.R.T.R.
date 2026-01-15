@@ -149,8 +149,19 @@ class LocalModelManager:
         
         try:
             logger.info(f"Launching Local Server: {' '.join(cmd)}")
+            
+            # Environment Setup for GPU Selection
+            env = os.environ.copy()
+            env["CUDA_VISIBLE_DEVICES"] = str(self.config.main_gpu)
+            
+            # Tensor Split (for multi-gpu)
+            if self.config.tensor_split:
+                ts_str = ",".join(map(str, self.config.tensor_split))
+                cmd.extend(["--tensor_split", ts_str])
+            
             self.process = subprocess.Popen(
                 cmd,
+                env=env,
                 # stdout=subprocess.PIPE, 
                 # stderr=subprocess.PIPE
             )

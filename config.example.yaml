@@ -10,7 +10,7 @@ memory:
   embedding_provider: "local"
   local_embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
   include_thoughts_in_history: false
-  
+
 search:
   google_cse_id:   #空欄なら内部で設定されたIDを使用する
   use_llm_search: true
@@ -19,6 +19,7 @@ local_llm:
   model_dir: "data/models/llm"
   default_model: "MN-12B-Mag-Mell-Q4_K_M.gguf"
   context_size: 16384
+  main_gpu: 0
   gpu_layers: -1
   presets:
     - name: "12GB GPU (Mag-Mell 12B)"
@@ -69,6 +70,16 @@ llm_profiles:
       supports_structured_outputs: true
       force_schema_prompt_injection: false
 
+  local-server:
+    provider: "openai"
+    base_url: "http://localhost:8000/v1"     # システムが起動するローカルサーバーのアドレス
+    model_name: "local-model" # サーバー側で指定されたモデルが使われるため名前は任意
+    api_key_env: "dummy"      # ローカルなのでダミーでOK
+    parameters:
+      temperature: 0.7
+    capabilities:
+      supports_structured_outputs: false
+      supports_json_mode: true
   # --- Roleplay ---
   gpt-5-mini(openrouter):
     provider: "openrouter"
